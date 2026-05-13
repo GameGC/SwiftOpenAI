@@ -114,10 +114,6 @@ struct DefaultOpenAIService: OpenAIService {
     var request = URLRequest(url: url)
     request.setValue(apiKey.value, forHTTPHeaderField: apiKey.headerField)
 
-    // Only add openai-beta header for non-Azure endpoints
-    if !isAzureEndpoint {
-      request.setValue("realtime=v1", forHTTPHeaderField: "openai-beta")
-    }
 
     if let organizationID {
       request.setValue(organizationID, forHTTPHeaderField: "OpenAI-Organization")

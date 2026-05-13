@@ -169,6 +169,35 @@ open class OpenAIRealtimeSession {
       if let base64Audio = json["delta"] as? String {
         continuation?.yield(.responseAudioDelta(base64Audio))
       }
+        
+        
+    case "response.output_audio_transcript.delta":
+        // GA renamed from "response.audio_transcript.delta"
+        if let delta = json["delta"] as? String {
+            continuation?.yield(.responseTextDelta(delta))
+        }
+    case "response.output_text.delta":
+        if let delta = json["delta"] as? String {
+            continuation?.yield(.responseTextDelta(delta))
+        }
+
+    case "response.output_audio_transcript.done":
+        // GA renamed from "response.audio_transcript.done"
+        if let transcript = json["transcript"] as? String {
+            continuation?.yield(.responseTextDone(transcript))
+        }
+
+    case "response.output_audio.delta":
+        if let base64Audio = json["delta"] as? String {
+          continuation?.yield(.responseAudioDelta(base64Audio))
+        }
+        break
+
+   // case "conversation.item.added":
+     //   break  // silence the warning
+
+    //case "conversation.item.done":
+      //  break  // silence the warning
 
     case "response.created":
       continuation?.yield(.responseCreated)
@@ -258,6 +287,7 @@ open class OpenAIRealtimeSession {
     case "response.mcp_call.in_progress":
       continuation?.yield(.responseMcpCallInProgress)
 
+        
     case "response.done":
       // Handle response completion (may contain errors like insufficient_quota)
       if

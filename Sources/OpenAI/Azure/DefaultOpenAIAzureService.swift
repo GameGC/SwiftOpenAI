@@ -909,7 +909,7 @@ public final class DefaultOpenAIAzureService: OpenAIService {
   {
     var responseParameters = parameters
     responseParameters.stream = false
-    let request = try AzureOpenAIAPI.response(.create(deploymentID: parameters.model)).request(
+      let request = try AzureOpenAIAPI.response(.create(deploymentID: parameters.model!)).request(
       apiKey: apiKey,
       openAIEnvironment: openAIEnvironment,
       organizationID: nil,
@@ -947,7 +947,7 @@ public final class DefaultOpenAIAzureService: OpenAIService {
   {
     var responseParameters = parameters
     responseParameters.stream = true
-    let request = try AzureOpenAIAPI.response(.create(deploymentID: parameters.model)).request(
+      let request = try AzureOpenAIAPI.response(.create(deploymentID: parameters.model!)).request(
       apiKey: apiKey,
       openAIEnvironment: openAIEnvironment,
       organizationID: nil,

@@ -43,21 +43,26 @@ public enum PromptVariableValue: Codable {
   /// Input item value (image, file, etc.)
   case inputItem(InputItem)
 
-  public init(from decoder: Decoder) throws {
-    let container = try decoder.singleValueContainer()
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
 
-    if let stringValue = try? container.decode(String.self) {
-      self = .string(stringValue)
-    } else if let inputItem = try? container.decode(InputItem.self) {
-      self = .inputItem(inputItem)
-    } else {
-      throw DecodingError.typeMismatch(
-        PromptVariableValue.self,
-        DecodingError.Context(
-          codingPath: decoder.codingPath,
-          debugDescription: "Expected String or InputItem"))
+        if let stringValue = try? container.decode(String.self) {
+            self = .string(stringValue)
+        } else if let inputItem = try? container.decode(InputItem.self) {
+            self = .inputItem(inputItem)
+        } else {
+            struct TypedString: Decodable { let text: String }
+            if let typed = try? TypedString(from: decoder) {
+                self = .string(typed.text)
+            } else {
+                throw DecodingError.typeMismatch(
+                    PromptVariableValue.self,
+                    DecodingError.Context(
+                        codingPath: decoder.codingPath,
+                        debugDescription: "Expected String or InputItem"))
+            }
+        }
     }
-  }
 
   public func encode(to encoder: Encoder) throws {
     var container = encoder.singleValueContainer()

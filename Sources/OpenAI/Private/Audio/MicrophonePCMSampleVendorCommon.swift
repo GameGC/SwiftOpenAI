@@ -16,7 +16,7 @@ private let logger = Logger(subsystem: "com.swiftopenai", category: "Audio")
 
 /// This protocol is used as a mixin.
 /// Please see MicrophonePCMSampleVendor.swift for the protocol that defines a user interface.
-nonisolated final class MicrophonePCMSampleVendorCommon {
+final class MicrophonePCMSampleVendorCommon: @unchecked Sendable {
   var bufferAccumulator: AVAudioPCMBuffer?
   var audioConverter: AVAudioConverter?
 

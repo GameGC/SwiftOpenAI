@@ -14,7 +14,7 @@ public struct ModelResponseParameter: Codable {
   /// Initialize a new ModelResponseParameter
   public init(
     input: InputType,
-    model: Model,
+    model: Model? = nil,
     background: Bool? = nil,
     conversation: Conversation? = nil,
     include: [ResponseInclude]? = nil,
@@ -44,7 +44,7 @@ public struct ModelResponseParameter: Codable {
     self.background = background
     self.conversation = conversation
     self.input = input
-    self.model = model.value
+    self.model = model?.value
     self.include = include?.map(\.rawValue)
     self.instructions = instructions
     self.maxOutputTokens = maxOutputTokens
@@ -106,7 +106,7 @@ public struct ModelResponseParameter: Codable {
   /// Model ID used to generate the response, like gpt-4o or o1. OpenAI offers a wide range of models with
   /// different capabilities, performance characteristics, and price points.
   /// Refer to the model guide to browse and compare available models.
-  public var model: String
+    public var model: String?
 
   /// Specify additional output data to include in the model response. Currently supported values are:
   /// - web_search_call.action.sources: Include the sources of the web search tool call.
