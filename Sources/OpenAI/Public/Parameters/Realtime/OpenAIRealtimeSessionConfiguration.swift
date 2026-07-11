@@ -19,6 +19,8 @@ public struct OpenAIRealtimeSessionConfiguration: Encodable, Sendable {
         instructions: String? = nil,
         maxResponseOutputTokens: MaxResponseOutputTokens? = nil,
         modalities: [Modality]? = nil,
+        prompt:Prompt? = nil,
+        reasoning: Reasoning? = nil,
         temperature: Double? = nil,
         tools: [RealtimeTool]? = nil,
         toolChoice: ToolChoice? = nil,
@@ -33,6 +35,8 @@ public struct OpenAIRealtimeSessionConfiguration: Encodable, Sendable {
         self.tools = tools
         self.toolChoice = toolChoice
         self.turnDetection = turnDetection
+        self.prompt = prompt
+        self.reasoning = reasoning
         self.sessionType = sessionType
     }
 
@@ -57,6 +61,10 @@ public struct OpenAIRealtimeSessionConfiguration: Encodable, Sendable {
     /// Audio and text cannot be requested simultaneously.
     public let modalities: [Modality]?
 
+    public let prompt: Prompt?
+    
+    public let reasoning: Reasoning?
+    
     /// Sampling temperature for the model.
     public let temperature: Double?
 
@@ -76,6 +84,8 @@ public struct OpenAIRealtimeSessionConfiguration: Encodable, Sendable {
         case instructions
         case maxResponseOutputTokens = "max_response_output_tokens"
         case modalities = "output_modalities"
+        case prompt
+        case reasoning
         case temperature
         case tools
         case toolChoice = "tool_choice"

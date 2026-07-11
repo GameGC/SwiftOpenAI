@@ -635,7 +635,7 @@ public enum OutputItem: Decodable {
     /// Unique identifier for the MCP tool call approval request
     public let approvalRequestId: String?
     /// The error from the tool call, if any
-    public let error: String?
+      public let error: MCPErrorValue?
     /// The output from the tool call
     public let output: String?
     /// The status of the tool call. One of in_progress, completed, incomplete, calling, or failed
@@ -653,7 +653,36 @@ public enum OutputItem: Decodable {
       case status
     }
   }
+    
+    public struct MCPError: Decodable {
+      public let message: String?
+      public let type: String?
+      public let code: String?
+      public let details: [String: ComputerToolCall.AnyCodable]?
 
+      enum CodingKeys: String, CodingKey {
+        case message
+        case type
+        case code
+        case details
+      }
+    }
+
+    public enum MCPErrorValue: Decodable {
+      case string(String)
+      case object(MCPError)
+
+      public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+
+        if let stringValue = try? container.decode(String.self) {
+          self = .string(stringValue)
+        } else {
+          self = .object(try container.decode(MCPError.self))
+        }
+      }
+    }
+    
   // MARK: - MCP List Tools
 
   /// A list of tools available on an MCP server
@@ -686,7 +715,7 @@ public enum OutputItem: Decodable {
     /// The type of the item. Always "mcp_list_tools"
     public let type: String
     /// Error message if the server could not list tools
-    public let error: String?
+      public let error: MCPErrorValue?
 
     enum CodingKeys: String, CodingKey {
       case id

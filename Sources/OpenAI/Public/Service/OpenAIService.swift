@@ -6,9 +6,6 @@
 //
 
 import Foundation
-#if os(Linux)
-import FoundationNetworking
-#endif
 
 // MARK: - APIError
 
@@ -20,6 +17,11 @@ public enum APIError: Error {
   case dataCouldNotBeReadMissingData(description: String)
   case bothDecodingStrategiesFailed
   case timeOutError
+  /// Thrown after `NetworkRetryPolicy` exhausts its retries on a transient
+  /// network error (dropped connection, timeout, DNS failure, etc.). Distinct
+  /// from `.requestFailed` so callers can specifically detect "the network
+  /// was the problem" and decide whether to retry again at a higher level.
+  case connectionInterrupted(description: String, attemptsMade: Int)
 
   public var displayDescription: String {
     switch self {
@@ -30,6 +32,8 @@ public enum APIError: Error {
     case .dataCouldNotBeReadMissingData(let description): description
     case .bothDecodingStrategiesFailed: "Decoding strategies failed."
     case .timeOutError: "Time Out Error."
+    case .connectionInterrupted(let description, let attemptsMade):
+      "Connection interrupted after \(attemptsMade) attempt(s): \(description)"
     }
   }
 }
@@ -1208,7 +1212,14 @@ extension OpenAIService {
     // Convert URLRequest to HTTPRequest
     let httpRequest = try HTTPRequest(from: request)
 
-    let (data, response) = try await httpClient.data(for: httpRequest)
+      
+    // Fast retry: if the connection drops before we even get a response,
+    // just fire the request again immediately rather than surfacing the
+    // failure. Non-network failures (bad status code, decode errors) are
+    // handled below and are never retried here.
+    let (data, response) = try await NetworkRetryPolicy.withRetry(debugEnabled: debugEnabled, label: "fetch") {
+      try await httpClient.data(for: httpRequest)
+    }
 
     if debugEnabled {
       printHTTPResponse(response)
@@ -1276,88 +1287,119 @@ extension OpenAIService {
     // Convert URLRequest to HTTPRequest
     let httpRequest = try HTTPRequest(from: request)
 
-    let (byteStream, response) = try await httpClient.bytes(for: httpRequest)
-
-    if debugEnabled {
-      printHTTPResponse(response)
-    }
-
-    guard response.statusCode == 200 else {
-      var errorMessage = "status code \(response.statusCode)"
-      do {
-        // For error responses, we need to get the raw data instead of using the stream
-        // as error responses are regular JSON, not streaming data
-        let (errorData, _) = try await httpClient.data(for: httpRequest)
-        let error = try decoder.decode(OpenAIErrorResponse.self, from: errorData)
-        errorMessage = error.error.message ?? "NO ERROR MESSAGE PROVIDED"
-      } catch {
-        // If decoding fails, keep the original error message with status code
-      }
-      throw APIError.responseUnsuccessful(
-        description: errorMessage,
-        statusCode: response.statusCode)
-    }
-
-    // Create a stream from the lines
-    guard case .lines(let lineStream) = byteStream else {
-      throw APIError.requestFailed(description: "Expected line stream but got byte stream")
-    }
-
     return AsyncThrowingStream { continuation in
       let fetchTask = Task {
-        do {
-          for try await line in lineStream {
-            if
-              line.hasPrefix("data:"), line != "data: [DONE]",
-              let data = String(line.dropFirst(5)).data(using: .utf8)
-            {
-              #if DEBUG
-              if debugEnabled {
-                try print(
-                  "DEBUG JSON STREAM LINE = \(JSONSerialization.jsonObject(with: data, options: .allowFragments) as? [String: Any])")
-              }
-              #endif
+        var attempt = 1
+        // Tracks whether we've already delivered at least one chunk to the
+        // caller. IMPORTANT: if a drop happens after this becomes true, the
+        // retry below re-issues the *entire* completion request from
+        // scratch (there is no "resume from here" for Chat/Responses
+        // streaming), so the caller may see a fresh full generation appended
+        // after whatever partial output already arrived. That's a deliberate
+        // trade-off for fast recovery over strict resumption - flip this
+        // to bail out instead of retrying once `hasYieldedAnyChunk` is true
+        // if you'd rather fail than risk duplicated/overlapping content.
+        var hasYieldedAnyChunk = false
+
+        attemptLoop: while true {
+          do {
+            let (byteStream, response) = try await httpClient.bytes(for: httpRequest)
+
+            if debugEnabled {
+              printHTTPResponse(response)
+            }
+
+            guard response.statusCode == 200 else {
+              var errorMessage = "status code \(response.statusCode)"
               do {
-                let decoded = try self.decoder.decode(T.self, from: data)
-                continuation.yield(decoded)
-              } catch DecodingError.keyNotFound(let key, let context) {
-                let debug = "Key '\(key.stringValue)' not found: \(context.debugDescription)"
-                let codingPath = "codingPath: \(context.codingPath)"
-                let debugMessage = debug + codingPath
-                #if DEBUG
-                if debugEnabled {
-                  print(debugMessage)
-                }
-                #endif
-                throw APIError.dataCouldNotBeReadMissingData(description: debugMessage)
+                // For error responses, we need to get the raw data instead of
+                // using the stream as error responses are regular JSON, not
+                // streaming data.
+                let (errorData, _) = try await httpClient.data(for: httpRequest)
+                let error = try decoder.decode(OpenAIErrorResponse.self, from: errorData)
+                errorMessage = error.error.message ?? "NO ERROR MESSAGE PROVIDED"
               } catch {
+                // If decoding fails, keep the original error message with status code
+              }
+              // A non-200 is an API-level rejection (bad request, auth,
+              // rate limit, etc.), not a transient network blip - never
+              // retry these, fail immediately.
+              continuation.finish(throwing: APIError.responseUnsuccessful(
+                description: errorMessage,
+                statusCode: response.statusCode))
+              return
+            }
+
+            guard case .lines(let lineStream) = byteStream else {
+              continuation.finish(throwing: APIError.requestFailed(description: "Expected line stream but got byte stream"))
+              return
+            }
+
+            for try await line in lineStream {
+              if
+                line.hasPrefix("data:"), line != "data: [DONE]",
+                let data = String(line.dropFirst(5)).data(using: .utf8)
+              {
                 #if DEBUG
                 if debugEnabled {
-                  debugPrint("CONTINUATION ERROR DECODING \(error.localizedDescription)")
+                  try print(
+                    "DEBUG JSON STREAM LINE = \(JSONSerialization.jsonObject(with: data, options: .allowFragments) as? [String: Any])")
                 }
                 #endif
-                continuation.finish(throwing: error)
+                do {
+                  let decoded = try self.decoder.decode(T.self, from: data)
+                  hasYieldedAnyChunk = true
+                  continuation.yield(decoded)
+                } catch DecodingError.keyNotFound(let key, let context) {
+                  let debug = "Key '\(key.stringValue)' not found: \(context.debugDescription)"
+                  let codingPath = "codingPath: \(context.codingPath)"
+                  let debugMessage = debug + codingPath
+                  #if DEBUG
+                  if debugEnabled {
+                    print(debugMessage)
+                  }
+                  #endif
+                  // A malformed chunk is a decode problem, not a
+                  // connectivity problem - don't retry, surface it.
+                  continuation.finish(throwing: APIError.dataCouldNotBeReadMissingData(description: debugMessage))
+                  return
+                } catch {
+                  #if DEBUG
+                  if debugEnabled {
+                    debugPrint("CONTINUATION ERROR DECODING \(error.localizedDescription)")
+                  }
+                  #endif
+                  continuation.finish(throwing: error)
+                  return
+                }
               }
             }
+
+            // Stream ended cleanly.
+            continuation.finish()
+            return
+
+          } catch {
+            guard NetworkRetryPolicy.isRetryable(error) else {
+              continuation.finish(throwing: error)
+              return
+            }
+            guard attempt < NetworkRetryPolicy.maxAttempts else {
+              continuation.finish(throwing: APIError.connectionInterrupted(
+                description: error.localizedDescription,
+                attemptsMade: attempt))
+              return
+            }
+            #if DEBUG
+            if debugEnabled {
+              let context = hasYieldedAnyChunk ? "after partial output - restarting the request from scratch" : "before any data arrived"
+              print("SwiftOpenAI: stream dropped \(context), retrying (attempt \(attempt)/\(NetworkRetryPolicy.maxAttempts)): \(error)")
+            }
+            #endif
+            attempt += 1
+            try? await Task.sleep(nanoseconds: NetworkRetryPolicy.interAttemptDelayNanoseconds)
+            continue attemptLoop
           }
-          continuation.finish()
-        } catch DecodingError.keyNotFound(let key, let context) {
-          let debug = "Key '\(key.stringValue)' not found: \(context.debugDescription)"
-          let codingPath = "codingPath: \(context.codingPath)"
-          let debugMessage = debug + codingPath
-          #if DEBUG
-          if debugEnabled {
-            print(debugMessage)
-          }
-          #endif
-          throw APIError.dataCouldNotBeReadMissingData(description: debugMessage)
-        } catch {
-          #if DEBUG
-          if debugEnabled {
-            print("CONTINUATION ERROR DECODING \(error.localizedDescription)")
-          }
-          #endif
-          continuation.finish(throwing: error)
         }
       }
       continuation.onTermination = { @Sendable _ in

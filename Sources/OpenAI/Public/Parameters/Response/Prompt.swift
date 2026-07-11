@@ -37,29 +37,38 @@ public struct Prompt: Codable {
 
 /// A value for a prompt variable that can be either a string or an input item (image, file, etc.)
 public enum PromptVariableValue: Codable {
-  /// String value
+  /// Plain string — works for Responses API prompts only.
   case string(String)
 
-  /// Input item value (image, file, etc.)
+  /// Typed input-text object — required format for Realtime API prompt variables.
+  /// Encodes as: { "type": "input_text", "text": "..." }
+  case inputText(String)
+
+  /// Full input item (image, file, etc.) for Responses API.
   case inputItem(InputItem)
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-
-        if let stringValue = try? container.decode(String.self) {
-            self = .string(stringValue)
-        } else if let inputItem = try? container.decode(InputItem.self) {
-            self = .inputItem(inputItem)
+        if let str = try? container.decode(String.self) {
+            self = .string(str)
+        } else if let item = try? container.decode(InputItem.self) {
+            self = .inputItem(item)
         } else {
-            struct TypedString: Decodable { let text: String }
-            if let typed = try? TypedString(from: decoder) {
-                self = .string(typed.text)
-            } else {
+            // OpenAI echoes variables back as {"type":"string","text":"..."} in
+            // responseCompleted — decode the keyed form and map it to the right case.
+            enum TypedKeys: String, CodingKey { case type, text }
+            let keyed = try decoder.container(keyedBy: TypedKeys.self)
+            let typeTag = try keyed.decode(String.self, forKey: .type)
+            let text    = try keyed.decode(String.self, forKey: .text)
+            switch typeTag {
+            case "string":     self = .string(text)
+            case "input_text": self = .inputText(text)
+            default:
                 throw DecodingError.typeMismatch(
                     PromptVariableValue.self,
                     DecodingError.Context(
                         codingPath: decoder.codingPath,
-                        debugDescription: "Expected String or InputItem"))
+                        debugDescription: "Unknown PromptVariableValue type tag: \(typeTag)"))
             }
         }
     }
@@ -69,6 +78,8 @@ public enum PromptVariableValue: Codable {
     switch self {
     case .string(let value):
       try container.encode(value)
+    case .inputText(let value):
+      try container.encode(TextContent(text: value))  // → {"type":"input_text","text":"..."}
     case .inputItem(let item):
       try container.encode(item)
     }

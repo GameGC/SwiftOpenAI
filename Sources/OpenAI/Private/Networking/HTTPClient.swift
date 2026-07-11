@@ -1,9 +1,5 @@
 import Foundation
 
-#if canImport(FoundationNetworking)
-import FoundationNetworking
-#endif
-
 // MARK: - HTTPClient
 
 /// Protocol that abstracts HTTP client functionality

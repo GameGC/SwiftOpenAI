@@ -1,10 +1,6 @@
 import Foundation
 
-#if canImport(FoundationNetworking)
-import FoundationNetworking
-#endif
 
-#if !os(Linux)
 /// Adapter that implements HTTPClient protocol using URLSession
 public class URLSessionHTTPClientAdapter: HTTPClient {
   /// Initializes a new URLSessionHTTPClientAdapter with the provided URLSession
@@ -95,4 +91,3 @@ public class URLSessionHTTPClientAdapter: HTTPClient {
     return result
   }
 }
-#endif

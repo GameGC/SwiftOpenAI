@@ -38,13 +38,21 @@ public class AsyncHTTPClientAdapter: HTTPClient {
     return AsyncHTTPClientAdapter(client: httpClient)
   }
 
+  /// Deadline applied to `execute()` calls. This bounds the *entire*
+  /// request/response lifetime (not just connect), so it needs to be long
+  /// enough that a legitimately long streaming completion doesn't get cut
+  /// off mid-generation and mistaken for a network failure. 1 hour is
+  /// intentionally generous since speed here means "recover fast from real
+  /// drops," not "give up fast on slow-but-healthy connections."
+  private static let requestDeadlineSeconds: Int64 = 3600
+
   /// Fetches data for a given HTTP request
   /// - Parameter request: The HTTP request to perform
   /// - Returns: A tuple containing the data and HTTP response
   public func data(for request: HTTPRequest) async throws -> (Data, HTTPResponse) {
     let asyncHTTPClientRequest = try createAsyncHTTPClientRequest(from: request)
 
-    let response = try await client.execute(asyncHTTPClientRequest, deadline: .now() + .seconds(60))
+    let response = try await client.execute(asyncHTTPClientRequest, deadline: .now() + .seconds(Self.requestDeadlineSeconds))
     let body = try await response.body.collect(upTo: 100 * 1024 * 1024) // 100 MB max
 
     let data = Data(buffer: body)
@@ -61,21 +69,34 @@ public class AsyncHTTPClientAdapter: HTTPClient {
   public func bytes(for request: HTTPRequest) async throws -> (HTTPByteStream, HTTPResponse) {
     let asyncHTTPClientRequest = try createAsyncHTTPClientRequest(from: request)
 
-    let response = try await client.execute(asyncHTTPClientRequest, deadline: .now() + .seconds(60))
+    let response = try await client.execute(asyncHTTPClientRequest, deadline: .now() + .seconds(Self.requestDeadlineSeconds))
     let httpResponse = HTTPResponse(
       statusCode: Int(response.status.code),
       headers: convertHeaders(response.headers))
 
     let stream = AsyncThrowingStream<String, Error> { continuation in
       Task {
+        // A single SSE `data: {...}` event can legitimately be split across
+        // two separate TCP reads/chunks - this is common and gets *more*
+        // likely, not less, under network jitter or a brief interruption.
+        // Splitting each `byteBuffer` independently (as this used to do)
+        // silently truncates/corrupts JSON whenever that happens. Buffering
+        // across chunks and only emitting complete lines fixes that; the
+        // URLSession adapter gets this for free from `asyncBytes.lines`.
+        var buffer = ""
         do {
           for try await byteBuffer in response.body {
-            if let string = byteBuffer.getString(at: 0, length: byteBuffer.readableBytes) {
-              let lines = string.split(separator: "\n", omittingEmptySubsequences: false)
-              for line in lines {
-                continuation.yield(String(line))
+            if let chunk = byteBuffer.getString(at: 0, length: byteBuffer.readableBytes) {
+              buffer += chunk
+              while let newlineIndex = buffer.firstIndex(of: "\n") {
+                let line = String(buffer[buffer.startIndex..<newlineIndex])
+                continuation.yield(line)
+                buffer.removeSubrange(buffer.startIndex...newlineIndex)
               }
             }
+          }
+          if !buffer.isEmpty {
+            continuation.yield(buffer)
           }
           continuation.finish()
         } catch {

@@ -7,6 +7,8 @@
 
 import Foundation
 
+
+
 /// Reasoning configuration for o-series models
 public struct Reasoning: Codable {
   public init(effort: String? = nil, summary: Summary? = nil) {
@@ -18,6 +20,7 @@ public struct Reasoning: Codable {
     case auto
     case concise
     case detailed
+   // case null
   }
 
   /// Defaults to medium
