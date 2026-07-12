@@ -676,3 +676,162 @@ public struct MCPApprovalResponse: Codable {
     case reason
   }
 }
+
+// MARK: - InputType Convenience Builders
+
+public extension InputType {
+  /// Create an input from an array of messages.
+  ///
+  /// Example:
+  /// ```swift
+  /// input: .messages([
+  ///     .user(content: [
+  ///         .inputText("Summarize this document"),
+  ///         .inputFile(fileId: "file-abc123")
+  ///     ])
+  /// ])
+  /// ```
+  static func messages(_ items: [InputItem]) -> InputType {
+    .array(items)
+  }
+}
+
+// MARK: - InputItem Convenience Builders
+
+public extension InputItem {
+  /// Create a user message with an array of content items.
+  ///
+  /// Example:
+  /// ```swift
+  /// .user(content: [
+  ///     .inputText("What's in this file?"),
+  ///     .inputFile(fileId: "file-abc123")
+  /// ])
+  /// ```
+  static func user(content: [ContentItem]) -> InputItem {
+    .message(InputMessage(role: "user", content: .array(content)))
+  }
+
+  /// Create a user message with a simple text string.
+  static func user(content: String) -> InputItem {
+    .message(InputMessage(role: "user", content: .text(content)))
+  }
+
+  /// Create a system message with a simple text string.
+  static func system(content: String) -> InputItem {
+    .message(InputMessage(role: "system", content: .text(content)))
+  }
+
+  /// Create a system message with an array of content items.
+  static func system(content: [ContentItem]) -> InputItem {
+    .message(InputMessage(role: "system", content: .array(content)))
+  }
+
+  /// Create a developer message with a simple text string.
+  static func developer(content: String) -> InputItem {
+    .message(InputMessage(role: "developer", content: .text(content)))
+  }
+
+  /// Create a developer message with an array of content items.
+  static func developer(content: [ContentItem]) -> InputItem {
+    .message(InputMessage(role: "developer", content: .array(content)))
+  }
+
+  /// Create an assistant message with a simple text string.
+  static func assistant(content: String) -> InputItem {
+    .message(InputMessage(role: "assistant", content: .text(content)))
+  }
+
+  /// Create an assistant message with an array of content items.
+  static func assistant(content: [ContentItem]) -> InputItem {
+    .message(InputMessage(role: "assistant", content: .array(content)))
+  }
+}
+
+// MARK: - ContentItem Convenience Builders
+
+public extension ContentItem {
+  /// Create an input text content item.
+  ///
+  /// Maps to the OpenAI API `input_text` content type:
+  /// ```json
+  /// { "type": "input_text", "text": "..." }
+  /// ```
+  static func inputText(_ text: String) -> ContentItem {
+    .text(TextContent(text: text))
+  }
+
+  /// Create an input file content item referencing an uploaded file by its ID.
+  ///
+  /// Maps to the OpenAI API `input_file` content type:
+  /// ```json
+  /// { "type": "input_file", "file_id": "file-abc123" }
+  /// ```
+  ///
+  /// - Parameters:
+  ///   - fileId: The ID of the file previously uploaded via the Files API.
+  ///   - filename: Optional filename for display purposes.
+  static func inputFile(fileId: String, filename: String? = nil) -> ContentItem {
+    .file(FileContent(fileId: fileId, filename: filename))
+  }
+
+  /// Create an input file content item with inline file data.
+  ///
+  /// Maps to the OpenAI API `input_file` content type with `file_data`:
+  /// ```json
+  /// { "type": "input_file", "file_data": "...", "filename": "doc.pdf" }
+  /// ```
+  ///
+  /// - Parameters:
+  ///   - fileData: The base64-encoded content of the file.
+  ///   - filename: The name of the file.
+  static func inputFile(fileData: String, filename: String) -> ContentItem {
+    .file(FileContent(fileData: fileData, filename: filename))
+  }
+
+  /// Create an input file content item referencing a file by URL.
+  ///
+  /// - Parameters:
+  ///   - fileUrl: The URL of the file.
+  ///   - filename: Optional filename for display purposes.
+  static func inputFile(fileUrl: String, filename: String? = nil) -> ContentItem {
+    .file(FileContent(fileUrl: fileUrl, filename: filename))
+  }
+
+  /// Create an input image content item referencing an uploaded image by its file ID.
+  ///
+  /// Maps to the OpenAI API `input_image` content type:
+  /// ```json
+  /// { "type": "input_image", "file_id": "file-abc123", "detail": "auto" }
+  /// ```
+  ///
+  /// - Parameters:
+  ///   - fileId: The ID of the image file previously uploaded via the Files API.
+  ///   - detail: The detail level (high, low, or auto). Defaults to "auto".
+  static func inputImage(fileId: String, detail: String? = "auto") -> ContentItem {
+    .image(ImageContent(detail: detail, fileId: fileId))
+  }
+
+  /// Create an input image content item from a URL or base64 data URL.
+  ///
+  /// - Parameters:
+  ///   - imageUrl: The URL of the image (or a base64 data URL).
+  ///   - detail: The detail level (high, low, or auto). Defaults to "auto".
+  static func inputImage(imageUrl: String, detail: String? = "auto") -> ContentItem {
+    .image(ImageContent(detail: detail, imageUrl: imageUrl))
+  }
+
+  /// Create an input audio content item.
+  ///
+  /// Maps to the OpenAI API `input_audio` content type:
+  /// ```json
+  /// { "type": "input_audio", "data": "...", "format": "wav" }
+  /// ```
+  ///
+  /// - Parameters:
+  ///   - data: The base64-encoded audio data.
+  ///   - format: The audio format (e.g., "wav", "mp3").
+  static func inputAudio(data: String, format: String) -> ContentItem {
+    .audio(AudioContent(data: data, format: format))
+  }
+}
