@@ -368,4 +368,20 @@ final class InputTypeTests: XCTestCase {
       // This would need to be added to fully support conversation history
     }
   }
+
+  func testInputFilePayloadJSON() throws {
+    let input: InputType = .messages([
+        .user(content: [
+            .inputText("Hello"),
+            .inputFile(fileId: "file-123")
+        ])
+    ])
+    let param = ModelResponseParameter(input: input)
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = .prettyPrinted
+    let data = try encoder.encode(param)
+    print("--- JSON PAYLOAD START ---")
+    print(String(data: data, encoding: .utf8)!)
+    print("--- JSON PAYLOAD END ---")
+  }
 }

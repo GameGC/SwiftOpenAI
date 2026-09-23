@@ -321,6 +321,20 @@ public struct ImageContent: Codable {
     case fileId = "file_id"
     case imageUrl = "image_url"
   }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(type, forKey: .type)
+    if let detail = detail {
+      try container.encode(detail, forKey: .detail)
+    }
+    if let fileId = fileId {
+      try container.encode(fileId, forKey: .fileId)
+    }
+    if let imageUrl = imageUrl {
+      try container.encode(imageUrl, forKey: .imageUrl)
+    }
+  }
 }
 
 // MARK: - FileContent
@@ -355,6 +369,23 @@ public struct FileContent: Codable {
     case fileId = "file_id"
     case fileUrl = "file_url"
     case filename
+  }
+
+  public func encode(to encoder: Encoder) throws {
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    try container.encode(type, forKey: .type)
+    if let fileData = fileData {
+      try container.encode(fileData, forKey: .fileData)
+    }
+    if let fileId = fileId {
+      try container.encode(fileId, forKey: .fileId)
+    }
+    if let fileUrl = fileUrl {
+      try container.encode(fileUrl, forKey: .fileUrl)
+    }
+    if let filename = filename {
+      try container.encode(filename, forKey: .filename)
+    }
   }
 }
 

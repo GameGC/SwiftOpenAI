@@ -655,11 +655,22 @@ public enum OutputItem: Decodable {
   }
     
     public struct MCPError: Decodable {
-      public let message: String?
-      public let type: String?
-      public let code: String?
-      public let details: [String: ComputerToolCall.AnyCodable]?
+        public let message: String?
+        public let type: String?
+        public let code: CodeValue?
+        public let details: [String: ComputerToolCall.AnyCodable]?
 
+        public enum CodeValue: Decodable {
+          case string(String)
+          case int(Int)
+
+          public init(from decoder: Decoder) throws {
+            let c = try decoder.singleValueContainer()
+            if let s = try? c.decode(String.self) { self = .string(s); return }
+            self = .int(try c.decode(Int.self))
+          }
+        }
+        
       enum CodingKeys: String, CodingKey {
         case message
         case type
